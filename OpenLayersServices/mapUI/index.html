@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenLayers 9 Poligon Çizme Örneği</title>
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+	<script src="https://code.jquery.com/jquery-3.7.1.slim.js" integrity="sha256-UgvvN8vBkgO0luPSUl2s8TIlOSYRoGFAX4jlCIm9Adc=" crossorigin="anonymous"></script>
+	<script src="https://cdn.jsdelivr.net/npm/ol@v9.2.1/dist/ol.js"></script>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.1/ol.css">
+	<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+	<link href="https://cdn.datatables.net/v/dt/dt-2.0.7/datatables.min.css" rel="stylesheet">
+	<script src="https://cdn.datatables.net/v/dt/dt-2.0.7/datatables.min.js"></script>
+
+    <style>
+	  .navbar-nav .nav-item {
+            margin-right: 16px; /* Butonlar arası boşluk */
+        }
+        #map {
+            width: 100%;
+            height: calc(100vh - 56px); /* Ekran boyutuna göre harita alanını ayarla */
+        }
+    </style>
+</head>
+<body>
+    <!-- Menü çubuğu -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <a class="navbar-brand" href="#">OpenLayers Harita APP</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item">
+                    <button id="exportButton" class="btn btn-light">Polygon Bilgilerini Konsola Aktar</button>
+                </li>
+				<li class="nav-item">
+				<button type="button" class="btn btn-primary" onclick="showUserDataTable()" data-toggle="modal" data-target="#myDataTableModal">
+					Query Drawing
+				</button>
+				</li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Harita alanı -->
+    <div id="map"></div>
+	
+	
+	<div class="modal fade bd-example-modal-lg" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myLargeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Eklemek İstediğiniz Kordinat İçin Ek Bilgileri Giriniz</h5>        
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="username">Kullanıcı Adı:</label>
+                    <input type="text" class="form-control" id="username">
+                </div>
+                <div class="form-group">
+                    <label for="number">Numara:</label>
+                    <input type="text" class="form-control" id="number">
+                </div>
+                <div class="form-group">
+                    <label hidden="hidden" for="coordinates">Koordinatlar:</label>
+                    <input type="text" hidden="hidden"  class="form-control" id="coordinates">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()" data-dismiss="modal">Kapat</button>
+                <button type="button" class="btn btn-primary"  id="saveButton">Kaydet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- myDataTableModal Modal -->
+    <div class="modal fade" id="myDataTableModal" tabindex="-1" aria-labelledby="myDataTableModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="myDataTableModalLabel">User Kordinat Bilgileri</h5>
+                </div>
+                <div class="modal-body">
+                    <table id="myDataTable" class="display" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Data Number</th>
+                                <th>Coordinates</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()" data-dismiss="modal">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <script>
+	const baseUrl = "http://localhost:5015/api/users/";
+	
+	function closeModal() {
+        $('#myModal').modal('hide');
+		$('#myDataTableModal').modal('hide');
+    }
+        // JavaScript kodunu OpenLayers yüklendikten sonra çalıştır
+        window.onload = function() {
+            // Harita oluşturma işlemi
+            var map = new ol.Map({
+                target: 'map',
+                layers: [
+                    new ol.layer.Tile({
+                        source: new ol.source.OSM()
+                    })
+                ],
+                view: new ol.View({
+                    center: ol.proj.fromLonLat([35.1686, 39.9334]), // Türkiye'nin merkezi olan koordinatlar
+                    zoom: 6 // Başlangıç yakınlığı
+                })
+            });
+
+            // Boş bir features collection oluştur
+            var features = new ol.Collection();
+
+            // Çizim katmanı oluştur
+            var drawLayer = new ol.layer.Vector({
+                source: new ol.source.Vector({
+                    features: features
+                })
+            });
+
+            // Haritaya çizim katmanını ekle
+            map.addLayer(drawLayer);
+			poligonViewOnLoad(drawLayer);
+
+            // Poligon çizme işlemi için çizim özelliğini başlat
+            var draw = new ol.interaction.Draw({
+                type: 'Polygon',
+                source: drawLayer.getSource()
+            });
+
+            map.addInteraction(draw);
+
+            // Poligon çizimi tamamlandığında bu olay tetikle
+            draw.on('drawend', function(event) {
+                var polygon = event.feature.getGeometry(); // Çizilen poligonun geometrisini al
+
+                // Poligonun bilgilerini JSON formatına dönüştür
+                var polygonInfo = {
+                    type: 'Polygon',
+                    coordinates: polygon.getCoordinates()
+                };
+
+                // konsola yazdır...
+                console.log(JSON.stringify(polygonInfo));
+				
+				//modal ac...
+				document.getElementById("coordinates").value = JSON.stringify(polygonInfo);
+				$('#myModal').modal('show');
+            });
+
+            // Dışa Aktar butonuna tıklama işlemi
+            document.getElementById('exportButton').addEventListener('click', function() {
+                // Her poligon için bilgileri dışa aktar
+                features.forEach(function(feature) {
+                    var polygon = feature.getGeometry();
+                    var polygonInfo = {
+                        type: 'Polygon',
+                        coordinates: polygon.getCoordinates()
+                    };
+                    console.log(JSON.stringify(polygonInfo));
+                });
+            });
+			
+			// servis kayit et...
+			document.getElementById('saveButton').addEventListener('click', function() {
+			
+			var savedata = {
+            coordinates: JSON.parse($("#coordinates").val()),
+			userName:$("#username").val(),
+			dataNumber: $("#number").val()
+			};
+			console.log(savedata);
+			
+	     axios.post(baseUrl+'CreateUserCoordinates', savedata)
+                .then(function (response) {
+                    console.log(response.data);
+					//mesajı goster...
+					alert(response.data.message);
+					closeModal();
+                })
+                .catch(function (error) {
+                    console.error("Veri kaydedilirken bir hata oluştu:", error);
+                });
+			});
+					
+			
+        };
+		
+ function poligonViewOnLoad(Dlayer) {
+		axios.get(baseUrl + 'GetUserCoordinates')
+                 .then(function(response) {
+    // API yanıtından gelen veriyi al
+    var data = response.data;
+	
+	// Bir daha servise gitme ilk acilista doldur...
+	dataTableDoldur(data);
+	
+    // Tüm koordinatları toplamak için boş bir koordinat listesi oluştur
+    var allCoordinates = [];
+
+    // Her bir kullanıcının koordinatlarını döngüyle topla
+    data.result.$values.forEach(function(user) {
+      user.coordinates.$values.forEach(function(coord) {
+        // Bu kullanıcının tüm koordinatlarını bir araya topla
+        var userCoordinates = coord.points.$values.map(function(point) {
+		// console.log(point.longitude + " " + point.latitude);
+          return [point.longitude, point.latitude];
+        });
+        // Tüm koordinatları genel koordinat listesine ekle
+        allCoordinates = allCoordinates.concat(userCoordinates);
+      });
+	  
+	   // Şimdi oluşturduğumuz koordinat listesini kullanarak bir Polygon oluşturabiliriz
+    var polygon = new ol.geom.Polygon([allCoordinates]);
+	
+	// Dizi bosalsin yoksa kafasına gore polyun cizer...
+	allCoordinates = [];
+     // Poligon özelliği oluştur
+     var feature = new ol.Feature(polygon);
+
+    // Özelliği katmana ekle
+    Dlayer.getSource().addFeature(feature);
+    });
+  })
+  .catch(function(error) {
+    console.error('Konum verileri alınırken hata oluştu: ', error);
+  });
+		}
+		
+		function showUserDataTable() {
+		$('#myDataTableModal').modal('show');
+		}
+		
+		// hazır datatableye json verisini bind et...
+		function dataTableDoldur(jsonData) {
+		   var tableData = jsonData.result.$values.map(item => {
+        return [
+            item.userName,
+            item.dataNumber,
+            item.coordinates.$values.map(coord => {
+                return coord.points.$values.map(point => {
+                    return `(${point.latitude}, ${point.longitude})`;
+                }).join(", ");
+            }).join("; ")
+        ];
+    });
+
+    // Modal açıldığında DataTables'i başlat
+    $('#myDataTableModal').on('shown.bs.modal', function () {
+        $('#myDataTable').DataTable({
+            data: tableData,
+            columns: [
+                { title: "Username" },
+                { title: "Data Number" },
+                { title: "Coordinates" }
+            ],
+            destroy: true // Modal her açıldığında tabloyu yeniden oluşturmak için
+        });
+    });
+
+		}
+		
+    </script>
+	
+</body>
+</html>
